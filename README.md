@@ -222,12 +222,80 @@ d = 'data:image/svg+xml;base64,' + base64.b64encode(open('dist-single/logo.svg',
 open(p, 'w', encoding='utf-8').write(s.replace('href="/logo.svg"', 'href="' + d + '"'))
 ```
 
-### Deployment
+---
+
+## Deployment
 
 The app is a fully static bundle with no server-side runtime, so `dist/` can be
 served from any static host — Vercel, Netlify, GitHub Pages, or Supabase Storage.
-The only deployment configuration needed is the two `VITE_SUPABASE_*` environment
-variables at build time.
+
+> [!IMPORTANT]
+> **Vite inlines environment variables at build time, not at runtime.**
+> `import.meta.env.VITE_SUPABASE_URL` is textually replaced with its value while
+> the bundle is being built. Adding or changing a variable on the host therefore
+> does nothing to an already-deployed site — a **new build** is required every
+> time.
+
+### Vercel (current setup)
+
+The repository is connected to Vercel, so every push to `main` triggers an
+automatic deployment. The auto-detected build settings are correct and need no
+changes:
+
+| Setting | Value |
+|---|---|
+| Framework preset | Vite |
+| Build command | `npm run build` |
+| Output directory | `dist` |
+| Install command | `npm install` |
+
+**Environment variables** — Project → Settings → Environment Variables. Add both,
+and tick **all three** scopes (Production, Preview, Development):
+
+| Key | Value |
+|---|---|
+| `VITE_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | The `anon` key from Supabase → Project Settings → API |
+
+Three things break this silently if you get them wrong:
+
+1. **The `VITE_` prefix is mandatory.** Vite only exposes variables that start with
+   it; anything else is dropped from the bundle without a warning.
+2. **Tick all three scopes.** A variable set for Production only leaves every
+   preview deployment unconfigured.
+3. **Redeploy without the build cache.** After adding the variables, go to
+   Deployments → latest → ⋯ → **Redeploy** and *uncheck* `Use existing Build
+   Cache`. A plain `git push` works too.
+
+If any of these is missed, the deployed site falls back to the
+`src/screens/Setup.jsx` connection screen, because `isConfigured` in
+`src/lib/supabase.js` evaluates to `false` with empty credentials.
+
+No `vercel.json` is needed — the app has no client-side router, so there are no
+routes to rewrite.
+
+### Supabase auth URLs
+
+`App.jsx` passes `redirectTo: window.location.origin` when requesting a password
+reset. Supabase rejects any redirect target that is not on its allow-list, so the
+deployed domain must be registered — otherwise reset and confirmation emails point
+at the wrong place.
+
+Supabase → **Authentication** → **URL Configuration**:
+
+- **Site URL** — the production domain, e.g. `https://<your-app>.vercel.app`
+- **Redirect URLs** — add both, so local development keeps working:
+  - `https://<your-app>.vercel.app/**`
+  - `http://localhost:5173/**`
+
+### If the Setup screen still appears
+
+Credentials saved from inside the app take priority over the build-time
+environment variables (see `src/lib/supabase.js`). If the connection form was ever
+filled in on that domain, the stored values are shadowing the correct ones. Open
+the site in a private window to confirm — if it works there, clear the stored
+values via **Settings → Change Supabase project**, which calls
+`clearCredentials()`.
 
 ---
 
