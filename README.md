@@ -1,176 +1,341 @@
 # TeamUp
 
-منصة تجمع المطوّرين والمصمّمين حسب **المهارات**، لبناء فرق هاكاثونات ومشاريع.
-عربي/إنجليزي بالكامل مع دعم RTL.
+**A skill-based matchmaking platform that helps developers and designers find the right teammates for hackathons and side projects.**
 
-**التقنيات:** React 18 + Vite · Supabase (Auth · Postgres + RLS · Realtime · Storage · Edge Functions)
-
----
-
-## الميزات
-
-- **تسجيل ودخول** عبر Supabase Auth، مع إعداد أولي من ٤ خطوات (حساب ← ملف ← مهارات ← مشاريع)
-- **مطابقة بالمهارات** — تختار المهارات المطلوبة فيعرض الأعضاء مرتّبين بنسبة التطابق
-- **كتالوج ١٨٢ مهارة** في ١٣ تصنيفًا، مع بحث فوري وإضافة مهارات جديدة
-- **طلبات تعاون** (إرسال/قبول/رفض) — القبول يفتح محادثة خاصة تلقائيًا
-- **محادثات لحظية** (Realtime) فردية وجماعية
-- **مجموعات** بنظام دعوات وصلاحيات (مالك / عضو / عضو مسموح له بالإدارة)
-- **إشعارات داخل الموقع** مع تفضيلات لكل نوع
-- **وضع الضيف** — تصفّح بلا حساب مع حد ٣ عمليات بحث
-- **صورة شخصية** عبر Supabase Storage
+`React 18` · `Vite 5` · `Supabase` · `PostgreSQL + RLS` · `Arabic / English with full RTL`
 
 ---
 
-## التشغيل محليًا
+## Overview
+
+Finding teammates is usually a matter of who you already know. TeamUp replaces that
+with an explicit skill graph: every member declares the skills they have and the
+proficiency level for each, and the search ranks people by how well they match the
+skills a team actually needs.
+
+The platform covers the full lifecycle — discover people, send a collaboration
+request, chat once it's accepted, and organise accepted collaborators into groups
+with their own shared chat.
+
+The entire interface is bilingual (Arabic / English) with proper RTL layout, and the
+app ships as either a standard static build or a **single self-contained HTML file**
+that runs by double-click, with no server involved.
+
+---
+
+## Features
+
+| Area | What it does |
+|---|---|
+| **Authentication** | Email/password via Supabase Auth, with a 4-step onboarding flow (account → profile → skills → projects). Progress is saved after **every** step, not at the end. |
+| **Skill matching** | Pick the skills a team needs; members are returned ranked by match percentage. |
+| **Skill catalogue** | 182 curated skills across 13 categories, with prefix-first search and the ability to contribute a new skill to the catalogue. |
+| **Collaboration requests** | Send / accept / reject. Accepting automatically opens a private conversation between both parties. |
+| **Realtime messaging** | One-to-one and group chat over Supabase Realtime. |
+| **Groups** | Invite-based membership with a three-tier permission model (owner / member / member-with-manage-rights), enforced in the database — not just in the UI. |
+| **Notifications** | In-app notification centre with unread badge and per-category preferences that are honoured server-side. |
+| **Guest mode** | Browse without an account, limited to 3 searches; any further action opens the sign-up gate. |
+| **Avatars** | Image upload to Supabase Storage, scoped per user by storage policy. |
+
+> Notifications are **in-app only**. Email and push are intentionally out of scope —
+> email would require an Edge Function plus a mail provider, and push does not work
+> from a `file://` origin.
+
+---
+
+## Tech Stack
+
+| Layer | Technology | Notes |
+|---|---|---|
+| UI | React 18.3 | No component library. Styling is inline, converted at runtime by a small `__css()` helper — see [Conventions](#development-conventions). |
+| Build | Vite 5.4 | `@vitejs/plugin-react` for the standard build; `vite-plugin-singlefile` for the one-file bundle. |
+| Auth | Supabase Auth | Per-tab session isolation for testing two accounts side by side. |
+| Database | Supabase PostgreSQL | 12 tables, Row-Level Security on all of them, `SECURITY DEFINER` functions for privileged operations. |
+| Realtime | Supabase Realtime | Enabled on `messages`, `group_messages`, `requests`, `group_members`, `groups`, `notifications`. |
+| Storage | Supabase Storage | Public-read `avatars` bucket, 3 MB limit, images only, write-scoped to `avatars/<user_id>/`. |
+| Serverless | Supabase Edge Functions (Deno) | `delete-account` — permanent account deletion. |
+| i18n | Local dictionary | `src/lib/strings.js` exposes `STR.ar` / `STR.en`. No i18n library. |
+
+---
+
+## Architecture
+
+### The `V` pattern
+
+`App.jsx` owns everything stateful: React state, all data fetching, and every
+handler. It composes them into a single object called `V` that carries prepared
+strings, computed colours, and callbacks. Components under `src/generated/` are
+pure presentation — they only read from `V`:
+
+```jsx
+{V.people}        {V.L.navHome}        onClick={V.runSearch}
+```
+
+**To add a feature:** define the values on `V` in `App.jsx`, then bind them in
+`generated/*.jsx`. Never put logic inside `generated/`.
+
+### Project layout
+
+```
+src/
+├─ App.jsx                    All application logic: state, queries, and the V object
+├─ main.jsx                   React entry point
+├─ index.css                  Global styles, animations, and interaction primitives
+├─ components/
+│  └─ PasswordField.jsx       Password input with reveal toggle
+├─ screens/
+│  ├─ Setup.jsx               Supabase connection screen (shown when no config exists)
+│  └─ AuthGate.jsx            Sign-up prompt for guests
+├─ lib/
+│  ├─ supabase.js             Client, project switching, per-tab session isolation
+│  ├─ db.js                   Every database query, in one place
+│  ├─ strings.js              All UI copy in Arabic and English
+│  ├─ style.js                __css("a:b;c:d") → React style object
+│  └─ time.js                 Relative timestamps and correct Arabic pluralisation
+└─ generated/                 Presentational components (see the V pattern above)
+
+supabase/
+├─ 01_schema.sql              Tables, RLS policies, GRANTs, functions, Realtime
+├─ 02_skills.sql              Skill catalogue (182 skills, 13 categories)
+├─ 03_demo_members_optional.sql
+├─ 04_storage_and_avatars.sql
+├─ 05_notifications.sql
+└─ functions/delete-account/  Edge Function
+```
+
+### Data model
+
+| Table | Purpose |
+|---|---|
+| `profiles` | User profile, bilingual fields, onboarding state |
+| `skills` | Skill catalogue (name, category) |
+| `user_skills` | Skill → user, with proficiency level |
+| `projects` | Portfolio entries attached to a profile |
+| `requests` | Collaboration requests with `pending / accepted / rejected` status |
+| `conversations`, `messages` | Direct messaging |
+| `groups`, `group_members`, `group_messages` | Groups, invitations, and group chat |
+| `notification_prefs`, `notifications` | Per-user notification switches and the feed |
+
+Privileged operations run through `SECURITY DEFINER` functions rather than direct
+table access — `accept_request()`, `conversation_with()`, `set_group_permission()`,
+and the `is_group_member()` / `is_conversation_member()` family used by the RLS
+policies themselves. `notify()` is the single entry point for creating a
+notification; it checks `notification_prefs` first and stays silent when the
+relevant switch is off.
+
+A partial index (`requests_one_per_pair`) enforces at most one request between any
+two users **in either direction**, so accepting in one direction is enough for both.
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18 or newer
+- A Supabase project (free tier is sufficient)
+
+### Install and run
 
 ```bash
 npm install
-cp .env.example .env      # ثم املأ القيم
+```
+
+```bash
+cp .env.example .env
+```
+
+Fill in the two variables, then start the dev server:
+
+```bash
 npm run dev
 ```
 
-### متغيّرات البيئة
+### Environment variables
 
-| المتغيّر | من وين تجيبه |
+| Variable | Where to find it |
 |---|---|
 | `VITE_SUPABASE_URL` | Supabase → Project Settings → API |
-| `VITE_SUPABASE_ANON_KEY` | نفس الصفحة — مفتاح `anon` |
+| `VITE_SUPABASE_ANON_KEY` | Same page — the `anon` key |
 
-> مفتاح `anon` مصمَّم ليكون في المتصفح؛ الحماية الحقيقية من سياسات RLS.
-> لا تضع مفتاح `service_role` في الواجهة أبدًا.
+> The `anon` key is designed to be exposed in the browser; the real access control
+> is the RLS policies. **Never** put a `service_role` key in frontend code.
 
-يمكن أيضًا تغيير مشروع Supabase من داخل الموقع: **الإعدادات ← تغيير مشروع Supabase**
-(يُخزَّن في `localStorage` ويتجاوز `.env`).
+The Supabase project can also be switched from inside the app — **Settings → Change
+Supabase project**. That value is stored in `localStorage` and takes precedence over
+`.env`.
 
 ---
 
-## إعداد قاعدة البيانات
+## Database Setup
 
-من **Supabase → SQL Editor → New query**، شغّل الملفات بالترتيب:
+In **Supabase → SQL Editor → New query**, run the files in order:
 
-| الملف | مطلوب؟ | الوظيفة |
-|---|---|---|
-| `supabase/01_schema.sql` | ✅ | الجداول + RLS + **GRANTs** + الدوال + Realtime |
-| `supabase/02_skills.sql` | ✅ | كتالوج المهارات (١٨٢ مهارة) |
-| `supabase/04_storage_and_avatars.sql` | ✅ | دلو `avatars` وسياساته |
-| `supabase/05_notifications.sql` | ✅ | جدول الإشعارات + التريجرات |
-| `supabase/03_demo_members_optional.sql` | اختياري | ٩ أعضاء تجريبيين — **للتطوير فقط، لا تشغّله على الإنتاج** |
+| File | Required | What it creates |
+|---|:---:|---|
+| `supabase/01_schema.sql` | ✅ | Tables, RLS policies, **GRANTs**, functions, Realtime publication |
+| `supabase/02_skills.sql` | ✅ | Skill catalogue — 182 skills, 13 categories |
+| `supabase/04_storage_and_avatars.sql` | ✅ | `avatars` bucket, `avatar_url` column, storage policies |
+| `supabase/05_notifications.sql` | ✅ | Notifications table, `notify()`, notification triggers |
+| `supabase/03_demo_members_optional.sql` | Optional | 9 demo members — **development only, do not run in production** |
 
-ثم **Edge Function** لحذف الحساب:
+Then deploy the Edge Function:
 
 ```bash
 supabase functions deploy delete-account --no-verify-jwt
 ```
 
-> `--no-verify-jwt` مقصود: الدالة تتحقق من الـ JWT بنفسها، وتحتاج تمرير `OPTIONS` لـ CORS.
+> `--no-verify-jwt` is deliberate: the function validates the JWT itself via
+> `admin.auth.getUser(token)`, and it must be able to answer the CORS preflight
+> `OPTIONS` request — the app is sometimes opened from `file://`, where the origin
+> is `null`.
 
-كل الملفات **قابلة لإعادة التشغيل** (`if not exists` / `on conflict`).
+All SQL files are **idempotent** (`if not exists` / `on conflict`) and safe to
+re-run.
 
 ---
 
-## البناء
+## Build
 
 ```bash
-npm run build          # ناتج عادي في dist/
-npm run build:single   # ملف HTML واحد في dist-single/ يعمل بالنقر المزدوج
+npm run build
 ```
+
+Standard static build in `dist/`.
+
+```bash
+npm run build:single
+```
+
+Bundles everything — JS, CSS, and assets — into a single HTML file in
+`dist-single/`. It runs by double-click from `file://` with no server, which is how
+the project is usually shared for review.
+
+After the single-file build, inline the favicon (easy to forget — the bundler leaves
+it as an external reference):
+
+```python
+import base64
+p = 'dist-single/index.html'
+s = open(p, encoding='utf-8').read()
+d = 'data:image/svg+xml;base64,' + base64.b64encode(open('dist-single/logo.svg','rb').read()).decode()
+open(p, 'w', encoding='utf-8').write(s.replace('href="/logo.svg"', 'href="' + d + '"'))
+```
+
+### Deployment
+
+The app is a fully static bundle with no server-side runtime, so `dist/` can be
+served from any static host — Vercel, Netlify, GitHub Pages, or Supabase Storage.
+The only deployment configuration needed is the two `VITE_SUPABASE_*` environment
+variables at build time.
 
 ---
 
-## بنية المشروع
+## Development Conventions
 
-```
-src/
-├─ App.jsx              كل المنطق: الحالة + الاستعلامات + كائن V
-├─ index.css            الأنماط العامة والحركات
-├─ components/          مكوّنات صغيرة مشتركة
-├─ screens/
-│  ├─ Setup.jsx         شاشة ربط Supabase (تظهر إذا ما فيه إعدادات)
-│  └─ AuthGate.jsx      نافذة التسجيل للضيف
-├─ lib/
-│  ├─ supabase.js       العميل + تبديل المشروع + جلسة مستقلة لكل تبويب
-│  ├─ db.js             كل استعلامات قاعدة البيانات في مكان واحد
-│  ├─ strings.js        كل النصوص عربي/إنجليزي + كتالوج المهارات
-│  ├─ style.js          __css("a:b") → كائن أنماط React
-│  └─ time.js           تواريخ نسبية + جمع عربي صحيح
-└─ generated/           مكوّنات الواجهة
-```
+These are not style preferences — each one exists because breaking it has already
+cost the team debugging time.
 
----
+**1. Logic lives in `V`.** All state and queries belong in `App.jsx`; `generated/`
+components read from `V` and render. No logic in `generated/`.
 
-## أعراف لازم نلتزم بها
+**2. Do not change the design.** The UI matches the original prototype exactly —
+colours, spacing, radii, animations. When adding an element, copy the styles of a
+similar existing one. Do not introduce a CSS framework and do not rewrite the
+styles. The `__css()` helper is what preserves the pixel-level match; keep it.
 
-**١. نمط `V`** — `App.jsx` يبني كائنًا واحدًا اسمه `V` فيه كل ما تحتاجه الواجهة
-(نصوص جاهزة، ألوان محسوبة، دوال). ملفات `generated/` **تقرأ منه فقط**:
-
-```jsx
-{V.people}   {V.L.navHome}   onClick={V.runSearch}
-```
-
-لإضافة ميزة: أضف القيم في `V` داخل `App.jsx`، ثم اربطها في `generated/*.jsx`.
-**لا تضع منطقًا داخل `generated/`.**
-
-**٢. لا تغيّر التصميم** — عند إضافة عنصر جديد، انسخ أنماط عنصر مشابه موجود.
-لا تُدخِل مكتبة CSS ولا تعِد كتابة الأنماط. مساعد `__css()` هو ما يحفظ التطابق
-البصري — أبقِ عليه.
-
-**٣. RLS وحدها لا تكفي — لازم GRANT.** أي جدول جديد يحتاج سياسة **و** صلاحية:
+**3. RLS alone is not enough — you also need `GRANT`.** A new table needs both a
+policy **and** table privileges:
 
 ```sql
 grant select, insert, update, delete on public.<table> to authenticated;
 ```
 
-بدونها كل قراءة وكتابة ترجع `permission denied` بصمت.
+Without the grant, every read and write fails with `permission denied` — silently,
+while the policy looks perfectly correct.
 
-**٤. `revoke ... from anon, authenticated` وحده لا يكفي** — بوستجرس يمنح
-`EXECUTE` إلى `PUBLIC` افتراضيًا، فاستخدم `from public, anon, authenticated`
-للدوال الداخلية. لكن **لا تمنع** الدوال التي تناديها الواجهة أو التي تستخدمها
-سياسات RLS.
+**4. `revoke ... from anon, authenticated` does nothing on its own.** PostgreSQL
+grants `EXECUTE` on new functions to `PUBLIC` by default, and both roles inherit
+from it. Internal functions must be revoked with:
 
-**٥. النصوص** كلها في `strings.js` (`STR.ar` / `STR.en`) — لا تكتب نصًا مباشرًا
-في المكوّنات.
-
----
-
-## سير العمل بالفروع
-
-```bash
-git checkout -b feature/<اسم-الميزة>
-# ... التعديلات
-git commit -m "وصف مختصر للتغيير"
-git push -u origin feature/<اسم-الميزة>
+```sql
+revoke execute on function public.<fn>(...) from public, anon, authenticated;
 ```
 
-ثم افتح Pull Request إلى `main`. اتفاقات مقترحة:
+But do **not** revoke functions the frontend calls directly, or the ones used inside
+RLS policies — revoking those breaks the policies themselves.
 
-- فرع لكل ميزة، ولا نلتزم مباشرة على `main`
-- `feature/…` للميزات · `fix/…` للإصلاحات
-- شغّل `npm run build` قبل فتح الـ PR للتأكد أن البناء يمر
-- تعديلات قاعدة البيانات تُضاف كملف SQL جديد في `supabase/` وتُذكر في الـ PR
+**5. RLS policies must start with a direct column comparison.** A `STABLE` function
+evaluates against the pre-statement snapshot, so it cannot see the row being
+inserted. A read policy written purely as `using (some_stable_fn(id, auth.uid()))`
+makes `INSERT … RETURNING` fail with a misleading
+`new row violates row-level security policy`. Lead with `owner_id = auth.uid() or …`.
+
+**6. All copy goes in `strings.js`.** Both `STR.ar` and `STR.en`. No string
+literals inside components.
+
+**7. `src/generated/` is hand-maintained.** These files were originally produced by
+a converter, but have been edited by hand since. Do not regenerate them — that would
+erase the manual work.
+
+**8. Auto-formatting is disabled on purpose** in `.vscode/settings.json`. The
+`generated/` files carry precise inline styles and reformatting breaks the layout.
 
 ---
 
-## حل مشاكل شائعة
-
-**`vite` لا يعمل بعد `npm install`** — بعض إصدارات npm الحديثة توقف سكربتات
-التثبيت، فلا يكتمل تنزيل ثنائيات `esbuild`:
+## Contributing
 
 ```bash
-npm approve-scripts esbuild
-npm rebuild esbuild
+git checkout -b feature/<feature-name>
 ```
 
-**`permission denied` من قاعدة البيانات** — الجدول ناقصه `GRANT` مو السياسة.
-راجع «أعراف لازم نلتزم بها ٣».
+```bash
+git commit -m "short description of the change"
+```
 
-**قائمة المهارات فاضية** — ما شُغّل `supabase/02_skills.sql`.
+```bash
+git push -u origin feature/<feature-name>
+```
+
+Then open a pull request against `main`.
+
+- One branch per feature — never commit directly to `main`
+- `feature/…` for features, `fix/…` for fixes
+- Run `npm run build` before opening a PR to confirm the build passes
+- Database changes go in a **new** SQL file under `supabase/` and must be mentioned
+  in the PR description
 
 ---
 
-## نصائح للتطوير
+## Troubleshooting
 
-- **تجربة بحسابين معًا:** أضف `?tab=2` إلى الرابط — يعطي التبويب جلسة مستقلة
-  وتظهر شارة بنفسجية.
-- **تأكيد البريد:** أثناء التطوير أطفئه من
-  Authentication → Sign In / Providers → Email → Confirm email = Off.
-- **من ليس لديه مهارات لا يظهر في نتائج المطابقة إطلاقًا** — انتبه عند اختبار البحث.
+**`vite` fails right after `npm install`** — recent npm versions block install
+scripts, so the `esbuild` binary never finishes downloading:
+
+```bash
+npm approve-scripts esbuild && npm rebuild esbuild
+```
+
+**`permission denied` from the database** — the table is missing a `GRANT`, not a
+policy. See convention 3.
+
+**The skill list is empty** — `supabase/02_skills.sql` has not been run.
+
+**Sign-up asks for email confirmation** — turn it off during development:
+Authentication → Sign In / Providers → Email → Confirm email = Off.
+
+**Testing two accounts at once** — append `?tab=2` to the URL. That tab gets an
+isolated session (its own `sessionStorage` key) and shows a purple badge.
+
+**A member never appears in search results** — members with no skills are excluded
+from matching entirely, by design.
+
+---
+
+## Contributors
+
+| Name |
+|---|
+| **Lujain Aljaeid** — لجين الجعيد |
+| **Rawan Alshammari** — روان الشمري |
+| **Manar Alqasem** — منار القاسم |
