@@ -1,0 +1,54 @@
+/* دائمًا احجز مكان شريط التمرير حتى لا يقفز العرض بين الشاشات القصيرة والطويلة */
+html { scrollbar-gutter: stable; overflow-y: scroll; }
+html, body { margin: 0; padding: 0; background: #f6f5f2; }
+* { box-sizing: border-box; }
+a { color: #14503f; text-decoration: none; }
+a:hover { color: #77519a; }
+input, textarea, button, select { font: inherit; color: inherit; }
+::selection { background: #efe7f6; color: #5d3f76; }
+
+#root { min-height: 100vh; }
+
+@keyframes tu-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes tu-pop  { from { opacity: 0; transform: translateY(6px); }  to { opacity: 1; transform: translateY(0); } }
+@keyframes tu-step { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes tu-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tu-float { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(24px,-28px) scale(1.08); } }
+
+/* ---- بديهيات الاستخدام ---- */
+
+/* إطار واضح عند التنقّل بالكيبورد أو الكتابة في أي حقل */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: #6fbfa5 !important;
+  box-shadow: 0 0 0 3px rgba(111, 191, 165, 0.25);
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid #77519a;
+  outline-offset: 2px;
+}
+
+/* الأزرار المعطّلة أثناء الحفظ/الدخول */
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed !important;
+}
+
+/* زر إظهار/إخفاء كلمة المرور */
+.hv-eye:hover {
+  background: #f0f1ee !important;
+  color: #0f3d31 !important;
+}
+
+/* منع تكبير الصفحة تلقائيًا عند الكتابة في الجوال */
+@media (max-width: 640px) {
+  input, textarea, select { font-size: 16px !important; }
+}
+
+/* على الشاشات الصغيرة: الشريط الجانبي يتحول إلى طبقة فوق المحتوى */
+@media (max-width: 860px) {
+  body { font-size: 15px; }
+}

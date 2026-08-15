@@ -1,0 +1,26 @@
+{
+  "//": "التنسيق التلقائي مطفأ عمدًا — ملفات generated/ فيها أنماط سطرية دقيقة، وأي إعادة تنسيق تكسر التطابق البصري مع التصميم الأصلي.",
+  "editor.formatOnSave": false,
+  "editor.tabSize": 2,
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/dist-single": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/dist-single": true,
+    "**/package-lock.json": true,
+    "**/ملفات-جاهزة": true
+  },
+
+  "emmet.includeLanguages": { "javascript": "javascriptreact" },
+  "javascript.updateImportsOnFileMove.enabled": "always",
+  "[sql]": { "editor.wordWrap": "on" },
+  "[markdown]": { "editor.wordWrap": "on" }
+}

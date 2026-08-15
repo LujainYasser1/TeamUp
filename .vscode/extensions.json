@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "dsznajder.es7-react-js-snippets",
+    "christian-kohler.path-intellisense",
+    "mikestead.dotenv",
+    "ms-vscode.live-server"
+  ]
+}
